@@ -335,17 +335,6 @@ def _build_middlewares(
     if loop_detection_config.enabled:
         middlewares.append(LoopDetectionMiddleware.from_config(loop_detection_config))
 
-    # Inject Everphone workflow router middleware (if available).
-    # This intercepts slash commands and structured intents, dispatching them
-    # to Python LangGraph subgraphs instead of the freestyle LLM.
-    try:
-        from workflows.middleware import WorkflowRouterMiddleware
-
-        middlewares.append(WorkflowRouterMiddleware())
-        logger.info("WorkflowRouterMiddleware registered")
-    except ImportError:
-        pass  # workflows package not mounted — skip silently
-
     # Inject custom middlewares before ClarificationMiddleware
     if custom_middlewares:
         middlewares.extend(custom_middlewares)
