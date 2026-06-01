@@ -141,6 +141,8 @@ class ClaudeChatModel(ChatAnthropic):
         """Override to inject prompt caching, thinking budget, and OAuth billing."""
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
 
+        self._fix_thinking_blocks(payload)
+
         if self._is_oauth:
             self._apply_oauth_billing(payload)
 
@@ -151,6 +153,30 @@ class ClaudeChatModel(ChatAnthropic):
             self._apply_thinking_budget(payload)
 
         return payload
+
+    @staticmethod
+    def _fix_thinking_blocks(payload: dict) -> None:
+        """Ensure thinking blocks in assistant messages have the required 'thinking' field.
+
+        When langchain_anthropic streams responses, thinking content arrives as separate
+        ``thinking_delta`` and ``signature_delta`` chunks that merge by index. If the
+        model produces an empty thinking block (no ``thinking_delta``, only
+        ``signature_delta``), the merged content block ends up as
+        ``{"type": "thinking", "signature": "..."}`` — missing the required ``thinking``
+        field. When this message is replayed in a multi-turn conversation, the API
+        rejects it with: ``messages.N.content.0.thinking.thinking: Field required``.
+
+        This method patches any such blocks before the payload reaches the API.
+        """
+        for msg in payload.get("messages", []):
+            if not isinstance(msg, dict) or msg.get("role") != "assistant":
+                continue
+            content = msg.get("content")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "thinking" and "thinking" not in block:
+                    block["thinking"] = ""
 
     def _apply_oauth_billing(self, payload: dict) -> None:
         """Inject the billing header block required for all OAuth requests.
